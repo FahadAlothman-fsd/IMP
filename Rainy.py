@@ -2,18 +2,23 @@ import dearpygui.dearpygui as dpg
 import ntpath
 import json
 from mutagen.mp3 import MP3
-from tkinter import Tk
-import threading
 import pygame
 import time
 import random
-import os
-from datetime import datetime, date as dt, time as t, timedelta
+from datetime import datetime, date as dt, timedelta
 import atexit
 from prayertimes import PrayTimes
 
 
 COORDINATES = (24.7136, 46.6753)
+MINUTES_BEFORE_PRAYER = 5
+MINUTES_AFTER_PRAYER = 45
+
+
+BACKGROUND_COLOR = (136, 74, 57)
+SECTION_BG_COLOR = (255, 194, 111)
+BUTTON_COLOR = (195, 129, 84)
+TEXT_COLOR = (255, 255, 255, 255)
 
 
 dpg.create_context()
@@ -66,7 +71,9 @@ def calc_time(prayertime, timedel, op):
 def render_prayers():
     global prayers
     for i in prayers:
-        fourty_five_minutes_after_prayer = calc_time(prayers[i], 45, "+")
+        fourty_five_minutes_after_prayer = calc_time(
+            prayers[i], MINUTES_AFTER_PRAYER, "+"
+        )
         dpg.add_text(
             label=f"{i}: {prayers[i]}",
             tag=i,
@@ -101,8 +108,12 @@ def prayer_callback():
     global prayers, paused_for_prayer, clock, current_prayer, state
     if current_prayer is None and not paused_for_prayer:
         for prayer in prayers:
-            five_minutes_before_prayer = calc_time(prayers[prayer], 1, "-")
-            fourty_five_minutes_after_prayer = calc_time(prayers[prayer], 0, "+")
+            five_minutes_before_prayer = calc_time(
+                prayers[prayer], MINUTES_BEFORE_PRAYER, "-"
+            )
+            fourty_five_minutes_after_prayer = calc_time(
+                prayers[prayer], MINUTES_AFTER_PRAYER, "+"
+            )
             if (
                 clock >= five_minutes_before_prayer
                 and clock < fourty_five_minutes_after_prayer
@@ -121,8 +132,12 @@ def prayer_callback():
                 )
                 break
     elif current_prayer is not None and paused_for_prayer:
-        five_minutes_before_prayer = calc_time(prayers[current_prayer], 1, "-")
-        fourty_five_minutes_after_prayer = calc_time(prayers[current_prayer], 0, "+")
+        five_minutes_before_prayer = calc_time(
+            prayers[current_prayer], MINUTES_BEFORE_PRAYER, "-"
+        )
+        fourty_five_minutes_after_prayer = calc_time(
+            prayers[current_prayer], MINUTES_AFTER_PRAYER, "+"
+        )
         if clock >= fourty_five_minutes_after_prayer:
             paused_for_prayer = False
             if state == "playing":
@@ -183,26 +198,6 @@ def update_track():
     )
 
 
-def update_slider():
-    global state
-    while state != None:
-        while pygame.mixer.music.get_busy():
-            dpg.configure_item(
-                item="pos", default_value=pygame.mixer.music.get_pos() / 1000
-            )
-            time.sleep(0.7)
-        if state == "Playing" and loop == -1:
-            print("Song ended")
-            dpg.configure_item(item="pos", max_value=100)
-            dpg.configure_item(item="pos", default_value=0)
-
-    dpg.configure_item("cstate", default_value=f"State: {state}")
-    dpg.configure_item("csong", default_value="Now Playing : ")
-    dpg.configure_item("play", label="Play")
-    dpg.configure_item(item="pos", max_value=100)
-    dpg.configure_item(item="pos", default_value=0)
-
-
 def play(sender, app_data, user_data):
     global state, loop, paused_for_prayer, song_length
     if not paused_for_prayer:
@@ -259,6 +254,12 @@ def stop():
     pygame.mixer.music.stop()
     state = None
 
+    dpg.configure_item("cstate", default_value=f"State: {state}")
+    dpg.configure_item("csong", default_value="Now Playing : ")
+    dpg.configure_item("play", label="Play")
+    dpg.configure_item(item="pos", max_value=100)
+    dpg.configure_item(item="pos", default_value=0)
+
 
 def add_files(sender, app_data):
     data = json.load(open("data/songs.json", "r"))
@@ -279,32 +280,10 @@ def add_files(sender, app_data):
                 dpg.add_spacer(height=2, parent="list")
 
 
-# def add_folder(sender, app_data):
-#     data = json.load(open("data/songs.json", "r"))
-
-#     root = Tk()
-#     root.withdraw()
-#     folder = app_data.selections
-#     root.quit()
-#     for filename in os.listdir(folder):
-#         if filename.endswith(".mp3" or ".wav" or ".ogg"):
-#             if filename not in data["songs"]:
-#                 update_database(os.path.join(folder, filename).replace("\\", "/"))
-#                 dpg.add_button(
-#                     label=f"{ntpath.basename(filename)}",
-#                     callback=play,
-#                     width=-1,
-#                     height=25,
-#                     user_data=os.path.join(folder, filename).replace("\\", "/"),
-#                     parent="list",
-#                 )
-#                 dpg.add_spacer(height=2, parent="list")
-
-
 def search(sender, app_data, user_data):
     songs = json.load(open("data/songs.json", "r"))["songs"]
     dpg.delete_item("list", children_only=True)
-    for index, song in enumerate(songs):
+    for _, song in enumerate(songs):
         if app_data in song.lower():
             dpg.add_button(
                 label=f"{ntpath.basename(song)}",
@@ -327,9 +306,11 @@ def removeall():
 
 with dpg.theme(tag="base"):
     with dpg.theme_component():
-        dpg.add_theme_color(dpg.mvThemeCol_Button, (130, 142, 250))
+        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, BACKGROUND_COLOR)
+        dpg.add_theme_color(dpg.mvThemeCol_Text, TEXT_COLOR)
+        dpg.add_theme_color(dpg.mvThemeCol_Button, BUTTON_COLOR)
         dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (137, 142, 255, 95))
-        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (137, 142, 255))
+        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, BUTTON_COLOR)
         dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 3)
         dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 4)
         dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 4, 4)
@@ -337,7 +318,7 @@ with dpg.theme(tag="base"):
         dpg.add_theme_style(dpg.mvStyleVar_WindowTitleAlign, 0.50, 0.50)
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0)
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 10, 14)
-        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (25, 25, 25))
+        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, SECTION_BG_COLOR)
         dpg.add_theme_color(dpg.mvThemeCol_Border, (0, 0, 0, 0))
         dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg, (0, 0, 0, 0))
         dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive, (130, 142, 250))
@@ -390,15 +371,7 @@ with dpg.file_dialog(
     dpg.add_file_extension(".wav", color=(0, 255, 0, 255), custom_text="[wav]")
     dpg.add_file_extension(".ogg", color=(0, 0, 255, 255), custom_text="[ogg]")
 
-# dpg.add_file_dialog(
-#     directory_selector=True,
-#     show=False,
-#     callback=add_folder,
-#     tag="add_folder_dialog",
-#     file_count=0,
-#     width=700,
-#     height=400,
-# )
+
 with dpg.window(tag="main", label="window title"):
     with dpg.child_window(autosize_x=True, height=45, no_scrollbar=True):
         dpg.add_text(f"Now Playing : ", tag="csong")
@@ -420,12 +393,6 @@ with dpg.window(tag="main", label="window title"):
                 height=28,
                 callback=lambda: dpg.show_item("add_files_dialog"),
             )
-            # dpg.add_button(
-            #     label="Add Folder",
-            #     width=-1,
-            #     height=28,
-            #     callback=lambda: dpg.show_item("add_folder_dialog"),
-            # )
             dpg.add_button(
                 label="Remove All Songs", width=-1, height=28, callback=removeall
             )
@@ -480,6 +447,7 @@ with dpg.window(tag="main", label="window title"):
     dpg.bind_item_theme("volume", "slider_thin")
     dpg.bind_item_theme("pos", "slider")
     dpg.bind_item_theme("list", "songs")
+    dpg.bind_item_theme("query", "songs")
 
 dpg.bind_theme("base")
 dpg.bind_font(monobold)
