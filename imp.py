@@ -6,6 +6,7 @@ from mutagen.oggvorbis import OggVorbis
 from mutagen.wave import WAVE
 import pygame
 import time
+import os
 import random
 from datetime import datetime, date as dt, timedelta
 import atexit
@@ -26,7 +27,7 @@ TEXT_COLOR = (255, 255, 255, 255)
 dpg.create_context()
 prayTimes = PrayTimes()
 prayTimes.setMethod("Makkah")
-dpg.create_viewport(title="IMP", large_icon="icon.ico", small_icon="icon.ico")
+dpg.create_viewport(title="IMP", large_icon="imp.ico", small_icon="imp.ico")
 pygame.mixer.init()
 
 
@@ -47,7 +48,6 @@ def get_prayer_times():
     prayers = {}
     for i in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
         prayers[i] = datetime.strptime(times[i.lower()], "%H:%M").time()  # type: ignore
-    prayers["test"] = datetime.strptime("11:24", "%H:%M").time()
     return prayers
 
 
@@ -122,7 +122,6 @@ def prayer_callback():
                 paused_for_prayer = True
                 current_prayer = prayer
                 if state == "playing":
-                    print("pause for prayer")
                     pygame.mixer.music.pause()
                 dpg.configure_item(prayer, color=(0, 255, 0, 255))
                 dpg.configure_item(
@@ -171,6 +170,19 @@ def update_volume(sender, app_data):
 
 
 def load_database():
+    # Check if the "data" directory exists
+    data_dir = os.path.join(os.getcwd(), "data")
+    if not os.path.exists(data_dir):
+        os.mkdir(data_dir)
+
+    # Check if the "songs.json" file exists
+    songs_file = os.path.join(data_dir, "songs.json")
+    if not os.path.exists(songs_file):
+        # Create the file
+        with open(songs_file, "w") as f:
+            f.write("")
+
+    # Open the "songs.json" file
     songs = json.load(open("data/songs.json", "r+"))["songs"]
     for filename in songs:
         dpg.add_button(
