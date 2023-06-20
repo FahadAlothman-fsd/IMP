@@ -2,6 +2,8 @@ import dearpygui.dearpygui as dpg
 import ntpath
 import json
 from mutagen.mp3 import MP3
+from mutagen.oggvorbis import OggVorbis
+from mutagen.wave import WAVE
 import pygame
 import time
 import random
@@ -45,7 +47,7 @@ def get_prayer_times():
     prayers = {}
     for i in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
         prayers[i] = datetime.strptime(times[i.lower()], "%H:%M").time()  # type: ignore
-    prayers["test"] = datetime.strptime("00:35", "%H:%M").time()
+    prayers["test"] = datetime.strptime("11:24", "%H:%M").time()
     return prayers
 
 
@@ -144,7 +146,7 @@ def prayer_callback():
             current_prayer = None
             dpg.configure_item(
                 "cstate",
-                default_value=f"Current State: {state}",
+                default_value=f"State: {state}",
                 color=(255, 255, 255, 255),
             )
 
@@ -201,9 +203,15 @@ def play(sender, app_data, user_data):
     if not paused_for_prayer:
         if user_data:
             pygame.mixer.music.load(user_data)
-            audio = MP3(user_data)
-            song_length = audio.info.length
-            dpg.configure_item(item="pos", max_value=audio.info.length)
+            if user_data.endswith(".mp3"):
+                audio = MP3(user_data)
+            if user_data.endswith(".wav"):
+                audio = WAVE(user_data)
+            if user_data.endswith(".ogg"):
+                audio = OggVorbis(user_data)
+
+            song_length = audio.info.length  # type: ignore
+            dpg.configure_item(item="pos", max_value=audio.info.length)  # type: ignore
             pygame.mixer.music.play(loop)
             if pygame.mixer.music.get_busy():
                 dpg.configure_item("play", label="Pause")
@@ -237,9 +245,15 @@ def play_pause():
                 dpg.configure_item("play", label="Pause")
             if pygame.mixer.music.get_busy():
                 state = "playing"
+            if song.endswith(".mp3"):
                 audio = MP3(song)
-                song_length = audio.info.length
-                print(audio.info.length, "song_length")
+            if song.endswith(".wav"):
+                audio = WAVE(song)
+            if song.endswith(".ogg"):
+                audio = OggVorbis(song)
+
+                song_length = audio.info.length  # type: ignore
+                print(audio.info.length, "song_length")  # type: ignore
                 dpg.configure_item(item="pos", max_value=song_length)
                 dpg.configure_item(
                     "csong", default_value=f"Now Playing : {ntpath.basename(song)}"
@@ -262,9 +276,10 @@ def stop():
 def add_files(sender, app_data):
     data = json.load(open("data/songs.json", "r"))
     filename = app_data["selections"]
+    # print(filename)
     for key in filename:
         file = filename[key]
-        if file.endswith(".mp3" or ".wav" or ".ogg"):
+        if file.endswith(".mp3") or file.endswith(".wav") or file.endswith(".ogg"):
             if file not in data["songs"]:
                 update_database(file)
                 dpg.add_button(
@@ -349,9 +364,9 @@ with dpg.theme(tag="songs"):
         dpg.add_theme_color(dpg.mvThemeCol_Button, (89, 89, 144, 40))
         dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (0, 0, 0, 0))
 
-with dpg.font_registry():
-    monobold = dpg.add_font("fonts/MonoLisa-Bold.ttf", 12)
-    head = dpg.add_font("fonts/MonoLisa-Bold.ttf", 15)
+# with dpg.font_registry():
+#     monobold = dpg.add_font("fonts/MonoLisa-Bold.ttf", 12)
+#     head = dpg.add_font("fonts/MonoLisa-Bold.ttf", 15)
 
 
 with dpg.file_dialog(
@@ -448,7 +463,7 @@ with dpg.window(tag="main", label="window title"):
     dpg.bind_item_theme("query", "songs")
 
 dpg.bind_theme("base")
-dpg.bind_font(monobold)
+# dpg.bind_font(monobold)
 
 
 def safe_exit():
