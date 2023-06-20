@@ -32,7 +32,7 @@ pygame.mixer.init()
 
 
 global state, paused_for_prayer, loop, date, clock, prayers, timezone, current_prayer, song_length
-timezone = int(time.tzname[0])
+timezone = 3
 state = None
 paused_for_prayer = False
 loop = -1
@@ -180,7 +180,7 @@ def load_database():
     if not os.path.exists(songs_file):
         # Create the file
         with open(songs_file, "w") as f:
-            f.write("")
+            f.write(json.dumps({"songs": []}, indent=4))
 
     # Open the "songs.json" file
     songs = json.load(open("data/songs.json", "r+"))["songs"]
