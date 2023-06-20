@@ -11,7 +11,7 @@ import random
 from datetime import datetime, date as dt, timedelta
 import atexit
 from prayertimes import PrayTimes
-
+from threading import Thread
 
 COORDINATES = (24.7136, 46.6753)
 MINUTES_BEFORE_PRAYER = 1
@@ -22,6 +22,7 @@ BACKGROUND_COLOR = (14, 41, 84, 100)
 SECTION_BG_COLOR = (31, 110, 140, 120)
 BUTTON_COLOR = (195, 129, 84)
 TEXT_COLOR = (255, 255, 255, 255)
+_DEFAULT_MUSIC_VOLUME = 0.5
 
 
 dpg.create_context()
@@ -31,7 +32,8 @@ dpg.create_viewport(title="IMP", large_icon="imp.ico", small_icon="imp.ico")
 pygame.mixer.init()
 
 
-global state, paused_for_prayer, loop, date, clock, prayers, timezone, current_prayer, song_length
+global state, paused_for_prayer, loop, date, clock, prayers, timezone, current_prayer, song_length, volume
+volume = _DEFAULT_MUSIC_VOLUME
 timezone = 3
 state = None
 paused_for_prayer = False
@@ -48,12 +50,12 @@ def get_prayer_times():
     prayers = {}
     for i in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
         prayers[i] = datetime.strptime(times[i.lower()], "%H:%M").time()  # type: ignore
+    prayers["test"] = datetime.strptime("19:15", "%H:%M").time()
     return prayers
 
 
 prayers = get_prayer_times()
 
-_DEFAULT_MUSIC_VOLUME = 0.5
 pygame.mixer.music.set_volume(0.5)
 
 
@@ -104,6 +106,26 @@ def loop_callback(sender, app_data):
         dpg.configure_item("loop", default_value="Loop: On")
 
 
+def fade_to_pause():
+    global volume
+    while volume > 0:
+        volume -= 0.01
+        pygame.mixer.music.set_volume(volume)
+        dpg.configure_item("volume", default_value=volume * 100)
+        time.sleep(0.1)
+    pygame.mixer.music.pause()
+
+
+def fade_to_unpause():
+    global volume
+    pygame.mixer.music.unpause()
+    while volume < 0.5:
+        volume += 0.01
+        pygame.mixer.music.set_volume(volume)
+        dpg.configure_item("volume", default_value=volume * 100)
+        time.sleep(0.1)
+
+
 def prayer_callback():
     global prayers, paused_for_prayer, clock, current_prayer, state
     if current_prayer is None and not paused_for_prayer:
@@ -122,7 +144,7 @@ def prayer_callback():
                 paused_for_prayer = True
                 current_prayer = prayer
                 if state == "playing":
-                    pygame.mixer.music.pause()
+                    Thread(target=fade_to_pause).start()
                 dpg.configure_item(prayer, color=(0, 255, 0, 255))
                 dpg.configure_item(
                     "cstate",
@@ -140,7 +162,7 @@ def prayer_callback():
         if clock >= fourty_five_minutes_after_prayer:
             paused_for_prayer = False
             if state == "playing":
-                pygame.mixer.music.unpause()
+                Thread(target=fade_to_unpause).start()
             dpg.configure_item(current_prayer, color=(137, 135, 122, 255))
             current_prayer = None
             dpg.configure_item(
