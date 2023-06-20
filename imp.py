@@ -24,9 +24,7 @@ TEXT_COLOR = (255, 255, 255, 255)
 dpg.create_context()
 prayTimes = PrayTimes()
 prayTimes.setMethod("Makkah")
-dpg.create_viewport(
-    title="Islamic Music Player", large_icon="icon.ico", small_icon="icon.ico"
-)
+dpg.create_viewport(title="IMP", large_icon="icon.ico", small_icon="icon.ico")
 pygame.mixer.init()
 
 
