@@ -18,8 +18,8 @@ MINUTES_BEFORE_PRAYER = 1
 MINUTES_AFTER_PRAYER = 0
 
 
-BACKGROUND_COLOR = (14, 41, 84, 100)
-SECTION_BG_COLOR = (31, 110, 140, 120)
+BACKGROUND_COLOR = (14, 41, 84, 255)
+SECTION_BG_COLOR = (31, 110, 140, 255)
 BUTTON_COLOR = (195, 129, 84)
 TEXT_COLOR = (255, 255, 255, 255)
 _DEFAULT_MUSIC_VOLUME = 0.5
@@ -32,7 +32,14 @@ dpg.create_viewport(title="IMP", large_icon="imp.ico", small_icon="imp.ico")
 pygame.mixer.init()
 
 
-global state, paused_for_prayer, loop, date, clock, prayers, timezone, current_prayer, song_length, volume
+global state, paused_for_prayer, loop, date, clock, prayers, timezone, current_prayer, song_length, volume, prayer_durations
+prayer_durations = {
+    "Fajr": 40,
+    "Dhuhr": 40,
+    "Asr": 40,
+    "Maghrib": 25,
+    "Isha": 40,
+}
 volume = _DEFAULT_MUSIC_VOLUME
 timezone = 3
 state = None
@@ -45,12 +52,15 @@ song_length = 1
 
 
 def get_prayer_times():
-    global date, timezone
+    global date, timezone, prayer_durations
     times = prayTimes.getTimes(date, COORDINATES, timezone)
     prayers = {}
     for i in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
-        prayers[i] = datetime.strptime(times[i.lower()], "%H:%M").time()  # type: ignore
-    prayers["test"] = datetime.strptime("19:15", "%H:%M").time()
+        prayers[i] = {"time": datetime.strptime(times[i.lower()], "%H:%M").time(), "duration": prayer_durations[i]}  # type: ignore
+    prayers["test"] = {
+        "time": datetime.strptime("19:15", "%H:%M").time(),
+        "duration": 0,
+    }
     return prayers
 
 
@@ -74,13 +84,13 @@ def render_prayers():
     global prayers
     for i in prayers:
         fourty_five_minutes_after_prayer = calc_time(
-            prayers[i], MINUTES_AFTER_PRAYER, "+"
+            prayers[i]["time"], prayers[i]["duration"], "+"
         )
         dpg.add_text(
-            label=f"{i}: {prayers[i]}",
+            label=f"{i}",
             tag=i,
             parent="sidebar",
-            default_value=f"{i}: {prayers[i].strftime('%I:%M %p')}",
+            default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')} - {prayers[i]['duration']}",
         )
         if clock >= fourty_five_minutes_after_prayer:
             dpg.configure_item(i, color=(137, 135, 122, 255))
@@ -131,10 +141,10 @@ def prayer_callback():
     if current_prayer is None and not paused_for_prayer:
         for prayer in prayers:
             five_minutes_before_prayer = calc_time(
-                prayers[prayer], MINUTES_BEFORE_PRAYER, "-"
+                prayers[prayer]["time"], MINUTES_BEFORE_PRAYER, "-"
             )
             fourty_five_minutes_after_prayer = calc_time(
-                prayers[prayer], MINUTES_AFTER_PRAYER, "+"
+                prayers[prayer]["time"], prayers[prayer]["duration"], "+"
             )
             if (
                 clock >= five_minutes_before_prayer
@@ -154,10 +164,10 @@ def prayer_callback():
                 break
     elif current_prayer is not None and paused_for_prayer:
         five_minutes_before_prayer = calc_time(
-            prayers[current_prayer], MINUTES_BEFORE_PRAYER, "-"
+            prayers[current_prayer]["time"], MINUTES_BEFORE_PRAYER, "-"
         )
         fourty_five_minutes_after_prayer = calc_time(
-            prayers[current_prayer], MINUTES_AFTER_PRAYER, "+"
+            prayers[current_prayer]["time"], prayers[current_prayer]["duration"], "+"
         )
         if clock >= fourty_five_minutes_after_prayer:
             paused_for_prayer = False
@@ -169,6 +179,11 @@ def prayer_callback():
                 "cstate",
                 default_value=f"State: {state}",
                 color=(255, 255, 255, 255),
+            )
+        else:
+            dpg.configure_item(
+                current_prayer,
+                # default_value=f"State: Paused For {current_prayer}",
             )
 
 
@@ -199,10 +214,40 @@ def load_database():
 
     # Check if the "songs.json" file exists
     songs_file = os.path.join(data_dir, "songs.json")
+    config_file = os.path.join(data_dir, "config.json")
     if not os.path.exists(songs_file):
         # Create the file
         with open(songs_file, "w") as f:
             f.write(json.dumps({"songs": []}, indent=4))
+
+    if not os.path.exists(config_file):
+        # Create the file
+        with open(config_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "config": {
+                            "longitude": 0,
+                            "latitude": 0,
+                            "timezone": 0,
+                            "dst": 0,
+                            "method": "Makkah",
+                            "mode": "Normal",
+                        },
+                        "duration": {
+                            "Imsak": 20,
+                            "Fajr": 40,
+                            "Dhuhr": 40,
+                            "Asr": 40,
+                            "Sunset": 25,
+                            "Maghrib": 25,
+                            "Isha": 40,
+                        },
+                        "additional_times": [{}],
+                    },
+                    indent=4,
+                )
+            )
 
     # Open the "songs.json" file
     songs = json.load(open("data/songs.json", "r+"))["songs"]
@@ -398,9 +443,9 @@ with dpg.theme(tag="songs"):
         dpg.add_theme_color(dpg.mvThemeCol_Button, (89, 89, 144, 40))
         dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (0, 0, 0, 0))
 
-# with dpg.font_registry():
-#     monobold = dpg.add_font("fonts/MonoLisa-Bold.ttf", 12)
-#     head = dpg.add_font("fonts/MonoLisa-Bold.ttf", 15)
+with dpg.font_registry():
+    monobold = dpg.add_font("fonts/MonoLisa-Bold.ttf", 12)
+    head = dpg.add_font("fonts/MonoLisa-Bold.ttf", 15)
 
 
 with dpg.file_dialog(
@@ -497,7 +542,7 @@ with dpg.window(tag="main", label="window title"):
     dpg.bind_item_theme("query", "songs")
 
 dpg.bind_theme("base")
-# dpg.bind_font(monobold)
+dpg.bind_font(monobold)
 
 
 def safe_exit():
