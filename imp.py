@@ -12,38 +12,29 @@ from datetime import datetime, date as dt, timedelta
 import atexit
 from prayertimes import PrayTimes
 from threading import Thread
-
-COORDINATES = (24.7136, 46.6753)
-MINUTES_BEFORE_PRAYER = 1
-MINUTES_AFTER_PRAYER = 0
+from typing import Literal
 
 
-BACKGROUND_COLOR = (14, 41, 84, 255)
-SECTION_BG_COLOR = (31, 110, 140, 255)
-BUTTON_COLOR = (195, 129, 84)
-TEXT_COLOR = (255, 255, 255, 255)
+BACKGROUND_COLOR = (17, 17, 34, 255)
+SECTION_BG_COLOR = (89, 27, 79, 255)
+BUTTON_COLOR = (111, 34, 101)
+TEXT_COLOR = (225, 204, 153, 255)
 _DEFAULT_MUSIC_VOLUME = 0.5
 
 
 dpg.create_context()
 prayTimes = PrayTimes()
 prayTimes.setMethod("Makkah")
+global state, paused_for_prayer, loop, date, clock, prayers, timezone, current_prayer, song_length, volume, config, songs, paused_for_additonal_time
 dpg.create_viewport(title="IMP", large_icon="imp.ico", small_icon="imp.ico")
 pygame.mixer.init()
 
 
-global state, paused_for_prayer, loop, date, clock, prayers, timezone, current_prayer, song_length, volume, prayer_durations
-prayer_durations = {
-    "Fajr": 40,
-    "Dhuhr": 40,
-    "Asr": 40,
-    "Maghrib": 25,
-    "Isha": 40,
-}
 volume = _DEFAULT_MUSIC_VOLUME
 timezone = 3
 state = None
 paused_for_prayer = False
+paused_for_additonal_time = False
 loop = -1
 date = dt.today()
 clock = datetime.now().time()
@@ -51,17 +42,81 @@ current_prayer = None
 song_length = 1
 
 
+def load_database():
+    global config, songs
+    # Check if the "data" directory exists
+    data_dir = os.path.join(os.getcwd(), "data")
+    if not os.path.exists(data_dir):
+        os.mkdir(data_dir)
+
+    # Check if the "songs.json" file exists
+    songs_file = os.path.join(data_dir, "songs.json")
+    config_file = os.path.join(data_dir, "config.json")
+    if not os.path.exists(songs_file):
+        # Create the file
+        with open(songs_file, "w") as f:
+            f.write(json.dumps({"songs": []}, indent=4))
+
+    if not os.path.exists(config_file):
+        # Create the file
+        with open(config_file, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "config": {
+                            "tbp": 5,
+                            "latitude": 24.7136,
+                            "longitude": 46.6753,
+                            "timezone": 3,
+                            "dst": 0,
+                            "method": "Makkah",
+                            "mode": "Normal",
+                        },
+                        "duration": {
+                            "Imsak": 20,
+                            "Fajr": 40,
+                            "Dhuhr": 40,
+                            "Asr": 40,
+                            "Sunset": 25,
+                            "Maghrib": 25,
+                            "Isha": 40,
+                        },
+                        "additional_times": [],
+                    },
+                    indent=4,
+                )
+            )
+
+    config = json.load(open(config_file, "r+"))
+    # Open the "songs.json" file
+    songs = json.load(open("data/songs.json", "r+"))["songs"]
+
+
+load_database()
+# print(config)
+
+
 def get_prayer_times():
-    global date, timezone, prayer_durations
-    times = prayTimes.getTimes(date, COORDINATES, timezone)
-    prayers = {}
-    for i in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]:
-        prayers[i] = {"time": datetime.strptime(times[i.lower()], "%H:%M").time(), "duration": prayer_durations[i]}  # type: ignore
-    prayers["test"] = {
-        "time": datetime.strptime("19:15", "%H:%M").time(),
-        "duration": 0,
+    global date, timezone, config
+    times = prayTimes.getTimes(
+        date,
+        (config["config"]["latitude"], config["config"]["longitude"]),
+        config["config"]["timezone"],
+        config["config"]["dst"],
+    )
+    prayers = []
+    prayer_times = {}
+    if config["config"]["mode"] == "Normal":
+        prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+    elif config["config"]["mode"] == "Ramadan":
+        prayers = ["Imsak", "Fajr", "Dhuhr", "Asr", "Sunset", "Maghrib", "Isha"]
+    for i in prayers:
+        prayer_times[i] = {"time": datetime.strptime(times[i.lower()], "%H:%M").time(), "duration": config["duration"][i]}  # type: ignore
+    prayer_times["test_prayer"] = {
+        "time": datetime.strptime("02:38", "%H:%M").time(),
+        "duration": 2,
     }
-    return prayers
+    return prayer_times
 
 
 prayers = get_prayer_times()
@@ -89,11 +144,67 @@ def render_prayers():
         dpg.add_text(
             label=f"{i}",
             tag=i,
-            parent="sidebar",
-            default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')} - {prayers[i]['duration']}",
+            parent="prayer_times",
+            default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')} - {prayers[i]['duration']}m",
         )
         if clock >= fourty_five_minutes_after_prayer:
             dpg.configure_item(i, color=(137, 135, 122, 255))
+
+
+def render_additional_times():
+    global config
+    for i in config["additional_times"]:
+        # print(i, i["time"], i["duration"], "line 156")
+        fourty_five_minutes_after_prayer = calc_time(
+            datetime.strptime(i["time"], "%H:%M").time(), i["duration"], "+"
+        )
+        dpg.add_text(
+            label=f"{i['name']}",
+            tag=f"{i['name']}",
+            parent="additional_times_text",
+            default_value=f"{i['name']}: {datetime.strptime(i['time'], '%H:%M').time().strftime('%I:%M %p')} - {i['duration']}m",
+        )
+        if clock >= fourty_five_minutes_after_prayer:
+            dpg.configure_item(f"{i['name']}", color=(137, 135, 122, 255))
+
+
+def render_additional_times_inputs():
+    global config
+    # print(config["additional_times"])
+    for index, additional_time in enumerate(config["additional_times"]):
+        # print("------------\n", additional_time, index, "line 692")
+        with dpg.group(
+            horizontal=True,
+            horizontal_spacing=10,
+            parent="additional_times_inputs",
+        ):
+            dpg.add_input_text(
+                label="Name",
+                width=100,
+                tag=f"name{index}",
+                default_value=additional_time["name"],
+            )
+            dpg.add_input_text(
+                width=100,
+                label="Time (HH:MM) 24h",
+                tag=f"time{index}",
+                default_value=additional_time["time"],
+            )
+            dpg.add_input_int(
+                min_clamped=True,
+                min_value=0,
+                width=100,
+                step=0,
+                label="Duration (minutes)",
+                tag=f"duration{index}",
+                default_value=additional_time["duration"],
+            )
+            dpg.add_button(
+                label="-",
+                callback=delete_time_callback,
+                user_data=index,
+                tag=f"delete{index}",
+            )
 
 
 def config_prayers():
@@ -108,7 +219,7 @@ def config_prayers():
 def loop_callback(sender, app_data):
     global loop
     if loop == -1:
-        print("loop callback")
+        # print("loop callback")
         loop = 0
         dpg.configure_item("loop", default_value="Loop: Off")
     else:
@@ -118,6 +229,7 @@ def loop_callback(sender, app_data):
 
 def fade_to_pause():
     global volume
+    print("fade to pause")
     while volume > 0:
         volume -= 0.01
         pygame.mixer.music.set_volume(volume)
@@ -128,6 +240,7 @@ def fade_to_pause():
 
 def fade_to_unpause():
     global volume
+    print("fade to unpause")
     pygame.mixer.music.unpause()
     while volume < 0.5:
         volume += 0.01
@@ -137,20 +250,21 @@ def fade_to_unpause():
 
 
 def prayer_callback():
-    global prayers, paused_for_prayer, clock, current_prayer, state
-    if current_prayer is None and not paused_for_prayer:
+    global prayers, paused_for_prayer, clock, current_prayer, state, config, paused_for_additonal_time
+    if (
+        current_prayer is None
+        and not paused_for_prayer
+        and not paused_for_additonal_time
+    ):
         for prayer in prayers:
-            five_minutes_before_prayer = calc_time(
-                prayers[prayer]["time"], MINUTES_BEFORE_PRAYER, "-"
+            pause_begin = calc_time(
+                prayers[prayer]["time"], config["config"]["tbp"], "-"
             )
-            fourty_five_minutes_after_prayer = calc_time(
+            pause_duration = calc_time(
                 prayers[prayer]["time"], prayers[prayer]["duration"], "+"
             )
-            if (
-                clock >= five_minutes_before_prayer
-                and clock < fourty_five_minutes_after_prayer
-            ):
-                print(state)
+            if clock >= pause_begin and clock < pause_duration:
+                # print(state)
                 paused_for_prayer = True
                 current_prayer = prayer
                 if state == "playing":
@@ -162,16 +276,18 @@ def prayer_callback():
                     color=(255, 0, 0, 255),
                 )
                 break
-    elif current_prayer is not None and paused_for_prayer:
-        five_minutes_before_prayer = calc_time(
-            prayers[current_prayer]["time"], MINUTES_BEFORE_PRAYER, "-"
-        )
-        fourty_five_minutes_after_prayer = calc_time(
+    elif (
+        current_prayer is not None
+        and paused_for_prayer
+        and not paused_for_additonal_time
+    ):
+        pause_duration = calc_time(
             prayers[current_prayer]["time"], prayers[current_prayer]["duration"], "+"
         )
-        if clock >= fourty_five_minutes_after_prayer:
+        if clock >= pause_duration:
             paused_for_prayer = False
-            if state == "playing":
+            if state == "playing" and not paused_for_additonal_time:
+                print("fade to unpause", "line 290")
                 Thread(target=fade_to_unpause).start()
             dpg.configure_item(current_prayer, color=(137, 135, 122, 255))
             current_prayer = None
@@ -180,11 +296,71 @@ def prayer_callback():
                 default_value=f"State: {state}",
                 color=(255, 255, 255, 255),
             )
-        else:
-            dpg.configure_item(
-                current_prayer,
-                # default_value=f"State: Paused For {current_prayer}",
+
+
+def additonal_times_callback():
+    global paused_for_prayer, clock, current_prayer, state, config, paused_for_additonal_time
+    if (
+        current_prayer is None
+        and not paused_for_prayer
+        and not paused_for_additonal_time
+    ):
+        for prayer in [
+            i
+            for i in config["additional_times"]
+            if i["name"] != "" and i["time"] != "" and i["duration"] != 0
+        ]:
+            pause_begin = calc_time(
+                datetime.strptime(prayer["time"], "%H:%M").time(),
+                config["config"]["tbp"],
+                "-",
             )
+            pause_duration = calc_time(
+                datetime.strptime(prayer["time"], "%H:%M").time(),
+                prayer["duration"],
+                "+",
+            )
+            if clock >= pause_begin and clock < pause_duration:
+                # print(state)
+                paused_for_additonal_time = True
+                current_prayer = prayer["name"]
+                if state == "playing":
+                    Thread(target=fade_to_pause, name="fade to pause").start()
+                dpg.configure_item(prayer["name"], color=(0, 255, 0, 255))
+                dpg.configure_item(
+                    "cstate",
+                    default_value=f"State: Paused For {current_prayer}",
+                    color=(255, 0, 0, 255),
+                )
+                break
+    elif (
+        current_prayer is not None
+        and not paused_for_prayer
+        and paused_for_additonal_time
+    ):
+        current_prayer = [
+            i for i in config["additional_times"] if i["name"] == current_prayer
+        ][0]
+
+        pause_duration = calc_time(
+            datetime.strptime(current_prayer["time"], "%H:%M").time(),
+            current_prayer["duration"],
+            "+",
+        )
+        if clock >= pause_duration:
+            paused_for_additonal_time = False
+            if state == "playing":
+                print("fade to unpause", "line 352")
+                Thread(target=fade_to_unpause, name="fade to unpause").start()
+            dpg.configure_item(current_prayer["name"], color=(137, 135, 122, 255))
+            current_prayer = None
+            dpg.configure_item(
+                "cstate",
+                default_value=f"State: {state}",
+                color=(255, 255, 255, 255),
+            )
+        else:
+            current_prayer = current_prayer["name"]
 
 
 def clock_callback():
@@ -206,51 +382,7 @@ def update_volume(sender, app_data):
     pygame.mixer.music.set_volume(app_data / 100.0)
 
 
-def load_database():
-    # Check if the "data" directory exists
-    data_dir = os.path.join(os.getcwd(), "data")
-    if not os.path.exists(data_dir):
-        os.mkdir(data_dir)
-
-    # Check if the "songs.json" file exists
-    songs_file = os.path.join(data_dir, "songs.json")
-    config_file = os.path.join(data_dir, "config.json")
-    if not os.path.exists(songs_file):
-        # Create the file
-        with open(songs_file, "w") as f:
-            f.write(json.dumps({"songs": []}, indent=4))
-
-    if not os.path.exists(config_file):
-        # Create the file
-        with open(config_file, "w") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "config": {
-                            "longitude": 0,
-                            "latitude": 0,
-                            "timezone": 0,
-                            "dst": 0,
-                            "method": "Makkah",
-                            "mode": "Normal",
-                        },
-                        "duration": {
-                            "Imsak": 20,
-                            "Fajr": 40,
-                            "Dhuhr": 40,
-                            "Asr": 40,
-                            "Sunset": 25,
-                            "Maghrib": 25,
-                            "Isha": 40,
-                        },
-                        "additional_times": [{}],
-                    },
-                    indent=4,
-                )
-            )
-
-    # Open the "songs.json" file
-    songs = json.load(open("data/songs.json", "r+"))["songs"]
+def load_songs():
     for filename in songs:
         dpg.add_button(
             label=f"{ntpath.basename(filename)}",
@@ -270,6 +402,148 @@ def update_database(filename: str):
     json.dump(data, open("data/songs.json", "r+"), indent=4, ensure_ascii=True)
 
 
+def save_config(sender, app_data, user_data):
+    global config, prayers
+
+    # print("sender", sender)
+    # print("app_data", app_data)
+    # print("user_data", user_data)
+    tpb = dpg.get_value("tbp")
+    longitude = round(dpg.get_value("lon"), 6)
+    latitude = round(dpg.get_value("lat"), 6)
+    timezone = dpg.get_value("tz")
+    dst = dpg.get_value("dst")
+    method = dpg.get_value("method")
+    mode = dpg.get_value("mode")
+
+    # Create an object to store the values
+    config_object = {
+        "tbp": tpb,
+        "longitude": longitude,
+        "latitude": latitude,
+        "timezone": timezone,
+        "dst": dst,
+        "method": method,
+        "mode": mode,
+    }
+    config["config"] = config_object
+    # print(config_object)
+
+    prayTimes.setMethod(method)
+    prayers = []
+    prayer_times = config["duration"]
+
+    if mode == "Normal":
+        prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+    elif mode == "Ramadan":
+        prayers = ["Imsak", "Fajr", "Dhuhr", "Asr", "Sunset", "Maghrib", "Isha"]
+
+    for prayer in prayers:
+        prayer_times[prayer] = dpg.get_value(prayer.lower())
+
+    # print(prayer_times)
+    config["duration"] = prayer_times
+
+    additional_times_values = []
+    num_additional_times = 0
+    while True:
+        name = dpg.get_value(f"name{num_additional_times}")
+        time = dpg.get_value(f"time{num_additional_times}")
+        duration = dpg.get_value(f"duration{num_additional_times}")
+        if name is None or time is None:
+            break
+        additional_times_values.append(
+            {"name": name, "time": time, "duration": duration}
+        )
+        num_additional_times += 1
+    # print(additional_times_values)
+    config["additional_times"] = additional_times_values
+    # print(config, "line 392")
+    json.dump(config, open("data/config.json", "w"), indent=4, ensure_ascii=True)
+    prayers = get_prayer_times()
+    dpg.delete_item("prayer_times", children_only=True)
+    render_prayers()
+    dpg.delete_item("additional_times_text", children_only=True)
+    render_additional_times()
+
+
+def mode_callback(sender, app_data: Literal["Normal", "Ramadan"]):
+    dpg.delete_item("prayer_group", children_only=True)
+    render_config_prayers(app_data)
+
+
+def render_config_prayers(mode: Literal["Normal", "Ramadan"]):
+    global config
+    prayers = []
+    if mode == "Normal":
+        prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+    elif mode == "Ramadan":
+        prayers = ["Imsak", "Fajr", "Dhuhr", "Asr", "Sunset", "Maghrib", "Isha"]
+
+    for prayer in prayers:
+        with dpg.group(horizontal=True, horizontal_spacing=10, parent="prayer_group"):
+            dpg.add_input_int(
+                min_clamped=True,
+                min_value=0,
+                width=100,
+                step=0,
+                label=f"{prayer} (minutes)",
+                tag=prayer.lower(),
+                default_value=config["duration"][prayer],
+            )
+        dpg.add_spacer(height=5, parent="prayer_group")
+
+
+def add_time_callback(sender):
+    global config
+    config["additional_times"].append({"name": "", "time": "", "duration": 0})
+    # print(config["additional_times"], "line 433")
+    index = len(config["additional_times"]) - 1
+    with dpg.group(
+        horizontal=True,
+        horizontal_spacing=10,
+        parent="additional_times_inputs",
+        tag=f"additional_time{index}",
+        height=20,
+    ):
+        dpg.add_input_text(
+            label="Name",
+            width=100,
+            tag=f"name{index}",
+            default_value=config["additional_times"][index]["name"],
+        )
+        dpg.add_input_text(
+            width=100,
+            label="Time (HH:MM) 24h",
+            tag=f"time{index}",
+            default_value=config["additional_times"][index]["time"],
+        )
+        dpg.add_input_int(
+            min_clamped=True,
+            min_value=0,
+            width=100,
+            step=0,
+            label="Duration (minutes)",
+            tag=f"duration{index}",
+            default_value=config["additional_times"][index]["duration"],
+        )
+        dpg.add_button(
+            label="-",
+            callback=delete_time_callback,
+            user_data=index,
+            tag=f"delete{index}",
+        )
+
+        # dpg.add_spacer(height=5, parent="additional_times")
+
+
+def delete_time_callback(sender, user_data, index):
+    global config
+    config["additional_times"].pop(index)
+    dpg.delete_item("additional_times_inputs", children_only=True)
+    render_additional_times_inputs()
+
+
 def update_track():
     global song_length
     dpg.configure_item(
@@ -279,7 +553,7 @@ def update_track():
 
 def play(sender, app_data, user_data):
     global state, loop, paused_for_prayer, song_length
-    if not paused_for_prayer:
+    if not paused_for_prayer or not paused_for_additonal_time:
         if user_data:
             pygame.mixer.music.load(user_data)
             if user_data.endswith(".mp3"):
@@ -302,26 +576,29 @@ def play(sender, app_data, user_data):
 
 
 def play_pause():
-    global state, paused_for_prayer, loop, song_length
+    global state, paused_for_prayer, loop, song_length, paused_for_additonal_time
 
-    if state == "playing" and not paused_for_prayer:
-        state = "paused"
-        pygame.mixer.music.pause()
-        dpg.configure_item("play", label="Play")
-        dpg.configure_item("cstate", default_value=f"State: Paused")
-    elif state == "paused" and not paused_for_prayer:
-        state = "playing"
-        pygame.mixer.music.unpause()
-        dpg.configure_item("play", label="Pause")
-        dpg.configure_item("cstate", default_value=f"State: Playing")
+    if state == "playing" and (not paused_for_prayer):
+        if not paused_for_additonal_time:
+            state = "paused"
+            pygame.mixer.music.pause()
+            dpg.configure_item("play", label="Play")
+            dpg.configure_item("cstate", default_value=f"State: Paused")
+    elif state == "paused" and (not paused_for_prayer):
+        if not paused_for_additonal_time:
+            state = "playing"
+            pygame.mixer.music.unpause()
+            dpg.configure_item("play", label="Pause")
+            dpg.configure_item("cstate", default_value=f"State: Playing")
     else:
         song = json.load(open("data/songs.json", "r"))["songs"]
         if song:
             song = random.choice(song)
             pygame.mixer.music.load(song)
             if not paused_for_prayer:
-                pygame.mixer.music.play(loop)
-                dpg.configure_item("play", label="Pause")
+                if not paused_for_additonal_time:
+                    pygame.mixer.music.play(loop)
+                    dpg.configure_item("play", label="Pause")
             if pygame.mixer.music.get_busy():
                 state = "playing"
             if song.endswith(".mp3"):
@@ -332,7 +609,7 @@ def play_pause():
                 audio = OggVorbis(song)
 
                 song_length = audio.info.length  # type: ignore
-                print(audio.info.length, "song_length")  # type: ignore
+                # print(audio.info.length, "song_length", "line 546")  # type: ignore
                 dpg.configure_item(item="pos", max_value=song_length)
                 dpg.configure_item(
                     "csong", default_value=f"Now Playing : {ntpath.basename(song)}"
@@ -469,14 +746,130 @@ with dpg.window(tag="main", label="window title"):
         dpg.add_text(f"Now Playing : ", tag="csong")
     dpg.add_spacer(height=2)
 
+    with dpg.window(
+        tag="config_settings",
+        label="Settings",
+        width=800,
+        height=400,
+        show=False,
+        pos=[200, 100],
+    ):
+        with dpg.tab_bar(label="Prayer Settings"):
+            with dpg.tab(label="Configurations"):
+                dpg.add_spacer(height=20)
+
+                dpg.add_input_int(
+                    default_value=config["config"]["tbp"],
+                    step=0,
+                    min_clamped=True,
+                    min_value=0,
+                    label="Time Before Prayer (minutes)",
+                    tag="tbp",
+                    width=100,
+                )
+                dpg.add_spacer(height=15)
+                dpg.add_input_float(
+                    default_value=config["config"]["longitude"],
+                    step=0,
+                    max_value=180,
+                    min_value=-180,
+                    max_clamped=True,
+                    min_clamped=True,
+                    format="%.6f",
+                    label="Longitude",
+                    tag="lon",
+                    width=100,
+                )
+                dpg.add_spacer(height=5)
+                dpg.add_input_float(
+                    default_value=config["config"]["latitude"],
+                    step=0,
+                    format="%.6f",
+                    max_value=90,
+                    min_value=-90,
+                    max_clamped=True,
+                    min_clamped=True,
+                    label="Latitude",
+                    tag="lat",
+                    width=100,
+                )
+                dpg.add_spacer(height=15)
+                dpg.add_input_int(
+                    default_value=config["config"]["timezone"],
+                    step=0,
+                    label="Timezone",
+                    tag="tz",
+                    width=100,
+                )
+                dpg.add_spacer(height=5)
+                dpg.add_input_int(
+                    default_value=config["config"]["dst"],
+                    step=0,
+                    label="DST",
+                    tag="dst",
+                    width=100,
+                )
+                dpg.add_spacer(height=15)
+                dpg.add_combo(
+                    label="Method",
+                    tag="method",
+                    items=[
+                        "MWL",
+                        "ISNA",
+                        "Egypt",
+                        "Makkah",
+                        "Karachi",
+                        "Tehran",
+                        "Jafari",
+                    ],
+                    default_value=config["config"]["method"],
+                    width=100,
+                )
+                dpg.add_spacer(height=15)
+                dpg.add_combo(
+                    label="Mode",
+                    tag="mode",
+                    items=["Normal", "Ramadan"],
+                    default_value=config["config"]["mode"],
+                    callback=mode_callback,
+                    width=100,
+                )
+                dpg.add_spacer(height=20)
+
+            with dpg.tab(label="Prayers"):
+                dpg.add_text("Please pick the pause duration of each prayer")
+                dpg.add_spacer(height=15)
+                with dpg.group(tag="prayer_group"):
+                    render_config_prayers("Normal")
+                dpg.add_spacer(height=15)
+                dpg.add_separator(show=True, label="Additonal Times")
+                dpg.add_spacer(height=15)
+                with dpg.group(tag="additional_times"):
+                    dpg.add_text(default_value="Additional Times", indent=300)
+                    with dpg.group(horizontal=True, horizontal_spacing=10):
+                        dpg.add_button(
+                            label="Add", callback=add_time_callback, width=100
+                        )
+
+                    dpg.add_spacer(height=15)
+                    with dpg.group(tag="additional_times_inputs"):
+                        if len(config["additional_times"]) > 0:
+                            render_additional_times_inputs()
+
+        dpg.add_separator()
+        dpg.add_spacer(height=15)
+        with dpg.group(horizontal=True, horizontal_spacing=10):
+            dpg.add_button(label="Save", callback=save_config)
+            dpg.add_button(
+                label="Cancel",
+                callback=lambda: dpg.hide_item("config_settings"),
+            )
+
     with dpg.group(horizontal=True):
         with dpg.child_window(width=300, tag="sidebar"):
             dpg.add_text(f"Date: {datetime.now().strftime('%d/%m/%Y')}", tag="date")
             dpg.add_text(f"Clock: {clock.strftime('%I:%M:%S %p')}", tag="clock")
-
-            dpg.add_spacer(height=2)
-
-            dpg.add_spacer(height=5)
+            dpg.add_spacer(height=7)
             dpg.add_separator()
             dpg.add_spacer(height=5)
             dpg.add_button(
@@ -488,6 +881,13 @@ with dpg.window(tag="main", label="window title"):
             dpg.add_button(
                 label="Remove All Songs", width=-1, height=28, callback=removeall
             )
+            dpg.add_button(
+                label="Settings",
+                width=-1,
+                height=28,
+                callback=lambda: dpg.show_item("config_settings"),
+            )
+
             dpg.add_spacer(height=5)
             dpg.add_separator()
             dpg.add_spacer(height=5)
@@ -497,7 +897,13 @@ with dpg.window(tag="main", label="window title"):
             dpg.add_spacer(height=5)
             dpg.add_separator()
             dpg.add_spacer(height=5)
-            render_prayers()
+            with dpg.group(tag="prayer_times"):
+                render_prayers()
+            dpg.add_spacer(height=5)
+            dpg.add_separator()
+            dpg.add_spacer(height=5)
+            with dpg.group(tag="additional_times_text"):
+                render_additional_times()
 
         with dpg.child_window(autosize_x=True, border=False):
             with dpg.child_window(autosize_x=True, height=50, no_scrollbar=True):
@@ -534,7 +940,7 @@ with dpg.window(tag="main", label="window title"):
                     )
                 dpg.add_spacer(height=5)
                 with dpg.child_window(autosize_x=True, delay_search=True, tag="list"):
-                    load_database()
+                    load_songs()
 
     dpg.bind_item_theme("volume", "slider_thin")
     dpg.bind_item_theme("pos", "slider")
@@ -566,7 +972,9 @@ while dpg.is_dearpygui_running():
         clock_start = tf
         clock_callback()
         prayer_callback()
-    if tf - date_start > 3600:
+        additonal_times_callback()
+
+    if tf - date_start > 60:
         date_start = tf
         date_callback()
     if pygame.mixer.music.get_busy():
