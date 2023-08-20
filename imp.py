@@ -12,7 +12,8 @@ from datetime import datetime, date as dt, timedelta
 import atexit
 from prayertimes import PrayTimes
 from threading import Thread
-from typing import Literal
+
+# from typing import Literal
 
 
 BACKGROUND_COLOR = (17, 17, 34, 255)
@@ -112,10 +113,10 @@ def get_prayer_times():
         prayers = ["Imsak", "Fajr", "Dhuhr", "Asr", "Sunset", "Maghrib", "Isha"]
     for i in prayers:
         prayer_times[i] = {"time": datetime.strptime(times[i.lower()], "%H:%M").time(), "duration": config["duration"][i]}  # type: ignore
-    prayer_times["test_prayer"] = {
-        "time": datetime.strptime("02:38", "%H:%M").time(),
-        "duration": 2,
-    }
+    # prayer_times["test_prayer"] = {
+    #     "time": datetime.strptime("02:38", "%H:%M").time(),
+    #     "duration": 2,
+    # }
     return prayer_times
 
 
@@ -467,12 +468,12 @@ def save_config(sender, app_data, user_data):
     render_additional_times()
 
 
-def mode_callback(sender, app_data: Literal["Normal", "Ramadan"]):
+def mode_callback(sender, app_data):
     dpg.delete_item("prayer_group", children_only=True)
     render_config_prayers(app_data)
 
 
-def render_config_prayers(mode: Literal["Normal", "Ramadan"]):
+def render_config_prayers(mode):
     global config
     prayers = []
     if mode == "Normal":
@@ -720,9 +721,9 @@ with dpg.theme(tag="songs"):
         dpg.add_theme_color(dpg.mvThemeCol_Button, (89, 89, 144, 40))
         dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (0, 0, 0, 0))
 
-with dpg.font_registry():
-    monobold = dpg.add_font("fonts/MonoLisa-Bold.ttf", 12)
-    head = dpg.add_font("fonts/MonoLisa-Bold.ttf", 15)
+# with dpg.font_registry():
+#     monobold = dpg.add_font("fonts/MonoLisa-Bold.ttf", 12)
+#     head = dpg.add_font("fonts/MonoLisa-Bold.ttf", 15)
 
 
 with dpg.file_dialog(
@@ -948,7 +949,7 @@ with dpg.window(tag="main", label="window title"):
     dpg.bind_item_theme("query", "songs")
 
 dpg.bind_theme("base")
-dpg.bind_font(monobold)
+# dpg.bind_font(monobold)
 
 
 def safe_exit():
