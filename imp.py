@@ -371,8 +371,8 @@ def clock_callback():
 
 def date_callback():
     global date, prayers
-    if datetime.today().date() > date:
-        date = datetime.today()
+    if dt.today() > date:
+        date = dt.today()
         prayers = get_prayer_times()
         dpg.configure_item("date", default_value=f"Date: {date.strftime('%d/%m/%Y')}")
         config_prayers()
