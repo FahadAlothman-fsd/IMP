@@ -213,7 +213,7 @@ def config_prayers():
     for i in prayers:
         dpg.configure_item(
             i,
-            default_value=f"{i}: {prayers[i].strftime('%I:%M %p')}",
+            default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')}",
         )
 
 
