@@ -20,7 +20,7 @@ BACKGROUND_COLOR = (17, 17, 34, 255)
 SECTION_BG_COLOR = (89, 27, 79, 255)
 BUTTON_COLOR = (111, 34, 101)
 TEXT_COLOR = (225, 204, 153, 255)
-_DEFAULT_MUSIC_VOLUME = 0.5
+_DEFAULT_MUSIC_VOLUME = 1.0
 
 
 dpg.create_context()
@@ -122,7 +122,7 @@ def get_prayer_times():
 
 prayers = get_prayer_times()
 
-pygame.mixer.music.set_volume(0.5)
+pygame.mixer.music.set_volume(volume)
 
 
 def calc_time(prayertime, timedel, op):
@@ -236,14 +236,16 @@ def fade_to_pause():
         pygame.mixer.music.set_volume(volume)
         dpg.configure_item("volume", default_value=volume * 100)
         time.sleep(0.1)
-    pygame.mixer.music.pause()
+    dpg.configure_item(item="pos", max_value=100)
+    dpg.configure_item(item="pos", default_value=0)
+    pygame.mixer.music.stop()
 
 
 def fade_to_unpause():
     global volume
     print("fade to unpause")
-    pygame.mixer.music.unpause()
-    while volume < 0.5:
+    pygame.mixer.music.play()
+    while volume < _DEFAULT_MUSIC_VOLUME:
         volume += 0.01
         pygame.mixer.music.set_volume(volume)
         dpg.configure_item("volume", default_value=volume * 100)
