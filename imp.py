@@ -114,7 +114,7 @@ def get_prayer_times():
     for i in prayers:
         prayer_times[i] = {"time": datetime.strptime(times[i.lower()], "%H:%M").time(), "duration": config["duration"][i]}  # type: ignore
     # prayer_times["test_prayer"] = {
-    #     "time": datetime.strptime("02:38", "%H:%M").time(),
+    #     "time": datetime.strptime("14:13", "%H:%M").time(),
     #     "duration": 2,
     # }
     return prayer_times
@@ -282,14 +282,15 @@ def prayer_callback():
                 # print(state)
                 paused_for_prayer = True
                 current_prayer = prayer
-                if state == "playing":
-                    Thread(target=fade_to_pause).start()
                 dpg.configure_item(prayer, color=(0, 255, 0, 255))
                 dpg.configure_item(
                     "cstate",
                     default_value=f"State: Paused For {prayer}",
                     color=(255, 0, 0, 255),
                 )
+                if state == "playing":
+                    Thread(target=fade_to_pause).start()
+
                 break
     elif (
         current_prayer is not None
@@ -301,9 +302,7 @@ def prayer_callback():
         )
         if clock >= pause_duration:
             paused_for_prayer = False
-            if state == "playing" and not paused_for_additonal_time:
-                print("fade to unpause", "line 290")
-                Thread(target=fade_to_unpause).start()
+
             dpg.configure_item(current_prayer, color=(137, 135, 122, 255))
             current_prayer = None
             dpg.configure_item(
@@ -311,6 +310,36 @@ def prayer_callback():
                 default_value=f"State: {state}",
                 color=(255, 255, 255, 255),
             )
+            for prayer in [
+                i
+                for i in config["additional_times"]
+                if i["name"] != "" and i["time"] != "" and i["duration"] != 0
+            ]:
+                pause_begin = calc_time(
+                    datetime.strptime(prayer["time"], "%H:%M").time(),
+                    config["config"]["tbp"],
+                    "-",
+                )
+                pause_duration = calc_time(
+                    datetime.strptime(prayer["time"], "%H:%M").time(),
+                    prayer["duration"],
+                    "+",
+                )
+                if clock >= pause_begin and clock < pause_duration:
+                    # print(state)
+                    paused_for_additonal_time = True
+                    current_prayer = prayer["name"]
+
+                    dpg.configure_item(prayer["name"], color=(0, 255, 0, 255))
+                    dpg.configure_item(
+                        "cstate",
+                        default_value=f"State: Paused For {current_prayer}",
+                        color=(255, 0, 0, 255),
+                    )
+
+            if state == "playing" and not paused_for_additonal_time:
+                print("fade to unpause", "line 339")
+                Thread(target=fade_to_unpause).start()
 
 
 def additonal_times_callback():
@@ -339,14 +368,15 @@ def additonal_times_callback():
                 # print(state)
                 paused_for_additonal_time = True
                 current_prayer = prayer["name"]
-                if state == "playing":
-                    Thread(target=fade_to_pause, name="fade to pause").start()
+
                 dpg.configure_item(prayer["name"], color=(0, 255, 0, 255))
                 dpg.configure_item(
                     "cstate",
                     default_value=f"State: Paused For {current_prayer}",
                     color=(255, 0, 0, 255),
                 )
+                if state == "playing":
+                    Thread(target=fade_to_pause, name="fade to pause").start()
                 break
     elif (
         current_prayer is not None
@@ -364,9 +394,6 @@ def additonal_times_callback():
         )
         if clock >= pause_duration:
             paused_for_additonal_time = False
-            if state == "playing":
-                print("fade to unpause", "line 352")
-                Thread(target=fade_to_unpause, name="fade to unpause").start()
             dpg.configure_item(current_prayer["name"], color=(137, 135, 122, 255))
             current_prayer = None
             dpg.configure_item(
@@ -374,6 +401,29 @@ def additonal_times_callback():
                 default_value=f"State: {state}",
                 color=(255, 255, 255, 255),
             )
+
+            for prayer in prayers:
+                pause_begin = calc_time(
+                    prayers[prayer]["time"], config["config"]["tbp"], "-"
+                )
+                pause_duration = calc_time(
+                    prayers[prayer]["time"], prayers[prayer]["duration"], "+"
+                )
+                if clock >= pause_begin and clock < pause_duration:
+                    # print(state)
+                    paused_for_prayer = True
+                    current_prayer = prayer
+                    dpg.configure_item(prayer, color=(0, 255, 0, 255))
+                    dpg.configure_item(
+                        "cstate",
+                        default_value=f"State: Paused For {prayer}",
+                        color=(255, 0, 0, 255),
+                    )
+
+            if state == "playing" and not paused_for_prayer:
+                print("fade to unpause", "line 352")
+                Thread(target=fade_to_unpause, name="fade to unpause").start()
+
         else:
             current_prayer = current_prayer["name"]
 
