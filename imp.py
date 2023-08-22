@@ -213,7 +213,19 @@ def config_prayers():
     for i in prayers:
         dpg.configure_item(
             i,
-            default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')}",
+            default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')} - {prayers[i]['duration']}m",
+            color=(255, 255, 255, 255),
+        )
+
+    for prayer in [
+        i
+        for i in config["additional_times"]
+        if i["name"] != "" and i["time"] != "" and i["duration"] != 0
+    ]:
+        dpg.configure_item(
+            prayer["name"],
+            default_value=f"{prayer['name']}: {datetime.strptime(prayer['time'], '%H:%M').time().strftime('%I:%M %p')} - {prayer['duration']}m",
+            color=(255, 255, 255, 255),
         )
 
 
@@ -977,7 +989,7 @@ while dpg.is_dearpygui_running():
         prayer_callback()
         additonal_times_callback()
 
-    if tf - date_start > 60:
+    if tf - date_start > 5:
         date_start = tf
         date_callback()
     if pygame.mixer.music.get_busy():
