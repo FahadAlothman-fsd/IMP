@@ -21,7 +21,15 @@ SECTION_BG_COLOR = (89, 27, 79, 255)
 BUTTON_COLOR = (111, 34, 101)
 TEXT_COLOR = (225, 204, 153, 255)
 _DEFAULT_MUSIC_VOLUME = 1.0
-
+WEEKDAYS = {
+    0: "Monday",
+    1: "Tuesday",
+    2: "Wednesday",
+    3: "Thursday",
+    4: "Friday",
+    5: "Saturday",
+    6: "Sunday",
+}
 
 dpg.create_context()
 prayTimes = PrayTimes()
@@ -82,6 +90,10 @@ def load_database():
                             "Maghrib": 25,
                             "Isha": 40,
                         },
+                        "friday": {
+                            "before": 30,
+                            "duration": 30,
+                        },
                         "additional_times": [],
                     },
                     indent=4,
@@ -97,7 +109,7 @@ load_database()
 # print(config)
 
 
-def get_prayer_times():
+def get_prayer_times(day):
     global date, timezone, config
     times = prayTimes.getTimes(
         date,
@@ -112,7 +124,13 @@ def get_prayer_times():
     elif config["config"]["mode"] == "Ramadan":
         prayers = ["Imsak", "Fajr", "Dhuhr", "Asr", "Sunset", "Maghrib", "Isha"]
     for i in prayers:
-        prayer_times[i] = {"time": datetime.strptime(times[i.lower()], "%H:%M").time(), "duration": config["duration"][i]}  # type: ignore
+        if day == "Friday" and i == "Dhuhr":
+            prayer_times["Friday"] = {
+                "time": datetime.strptime(times[i.lower()], "%H:%M").time(),
+                "duration": config["friday"]["duration"],
+            }
+        else:
+            prayer_times[i] = {"time": datetime.strptime(times[i.lower()], "%H:%M").time(), "duration": config["duration"][i]}  # type: ignore
     # prayer_times["test_prayer1"] = {
     #     "time": datetime.strptime("15:22", "%H:%M").time(),
     #     "duration": 2,
@@ -124,7 +142,7 @@ def get_prayer_times():
     return prayer_times
 
 
-prayers = get_prayer_times()
+prayers = get_prayer_times(WEEKDAYS[date.weekday()])
 
 pygame.mixer.music.set_volume(volume)
 
@@ -321,7 +339,10 @@ def prayer_callback():
             ]:
                 pause_begin = calc_time(
                     datetime.strptime(prayer["time"], "%H:%M").time(),
-                    config["config"]["tbp"],
+                    config["config"]["tbp"]
+                    if WEEKDAYS[date.weekday()] != "Friday"
+                    and prayer["name"] != "Friday"
+                    else config["friday"]["before"],
                     "-",
                 )
                 pause_duration = calc_time(
@@ -343,7 +364,12 @@ def prayer_callback():
 
             for prayer in prayers:
                 pause_begin = calc_time(
-                    prayers[prayer]["time"], config["config"]["tbp"], "-"
+                    prayers[prayer]["time"],
+                    config["config"]["tbp"]
+                    if WEEKDAYS[date.weekday()] != "Friday"
+                    and prayer["name"] != "Friday"
+                    else config["friday"]["before"],
+                    "-",
                 )
                 pause_duration = calc_time(
                     prayers[prayer]["time"], prayers[prayer]["duration"], "+"
@@ -382,7 +408,9 @@ def additonal_times_callback():
         ]:
             pause_begin = calc_time(
                 datetime.strptime(prayer["time"], "%H:%M").time(),
-                config["config"]["tbp"],
+                config["config"]["tbp"]
+                if WEEKDAYS[date.weekday()] != "Friday" and prayer["name"] != "Friday"
+                else config["friday"]["before"],
                 "-",
             )
             pause_duration = calc_time(
@@ -430,7 +458,12 @@ def additonal_times_callback():
 
             for prayer in prayers:
                 pause_begin = calc_time(
-                    prayers[prayer]["time"], config["config"]["tbp"], "-"
+                    prayers[prayer]["time"],
+                    config["config"]["tbp"]
+                    if WEEKDAYS[date.weekday()] != "Friday"
+                    and prayer["name"] != "Friday"
+                    else config["friday"]["before"],
+                    "-",
                 )
                 pause_duration = calc_time(
                     prayers[prayer]["time"], prayers[prayer]["duration"], "+"
@@ -453,7 +486,10 @@ def additonal_times_callback():
             ]:
                 pause_begin = calc_time(
                     datetime.strptime(prayer["time"], "%H:%M").time(),
-                    config["config"]["tbp"],
+                    config["config"]["tbp"]
+                    if WEEKDAYS[date.weekday()] != "Friday"
+                    and prayer["name"] != "Friday"
+                    else config["friday"]["before"],
                     "-",
                 )
                 pause_duration = calc_time(
@@ -494,7 +530,8 @@ def date_callback():
     global date, prayers
     if dt.today() > date:
         date = dt.today()
-        prayers = get_prayer_times()
+        prayers = get_prayer_times(WEEKDAYS[date.weekday()])
+
         dpg.configure_item("date", default_value=f"Date: {date.strftime('%d/%m/%Y')}")
         config_prayers()
 
@@ -536,6 +573,8 @@ def save_config(sender, app_data, user_data):
     dst = dpg.get_value("dst")
     method = dpg.get_value("method")
     mode = dpg.get_value("mode")
+    fri_before = dpg.get_value("fri_before")
+    fri_duration = dpg.get_value("fri_duration")
 
     # Create an object to store the values
     config_object = {
@@ -548,6 +587,7 @@ def save_config(sender, app_data, user_data):
         "mode": mode,
     }
     config["config"] = config_object
+    config["friday"] = {"before": fri_before, "duration": fri_duration}
     # print(config_object)
 
     prayTimes.setMethod(method)
@@ -581,7 +621,7 @@ def save_config(sender, app_data, user_data):
     config["additional_times"] = additional_times_values
     # print(config, "line 392")
     json.dump(config, open("data/config.json", "w"), indent=4, ensure_ascii=True)
-    prayers = get_prayer_times()
+    prayers = get_prayer_times(WEEKDAYS[date.weekday()])
     dpg.delete_item("prayer_times", children_only=True)
     render_prayers()
     dpg.delete_item("additional_times_text", children_only=True)
@@ -956,7 +996,26 @@ with dpg.window(tag="main", label="window title"):
                     width=100,
                 )
                 dpg.add_spacer(height=20)
-
+                dpg.add_input_int(
+                    default_value=config["friday"]["before"],
+                    step=0,
+                    min_clamped=True,
+                    min_value=0,
+                    label="Time Before Friday Prayer (minutes)",
+                    tag="fri_before",
+                    width=100,
+                )
+                dpg.add_spacer(height=15)
+                dpg.add_input_int(
+                    default_value=config["friday"]["duration"],
+                    step=0,
+                    min_clamped=True,
+                    min_value=0,
+                    label="Friday Prayer Pause Duration (minutes)",
+                    tag="fri_duration",
+                    width=100,
+                )
+                dpg.add_spacer(height=20)
             with dpg.tab(label="Prayers"):
                 dpg.add_text("Please pick the pause duration of each prayer")
                 dpg.add_spacer(height=15)
