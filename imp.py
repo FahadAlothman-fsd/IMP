@@ -164,12 +164,20 @@ def render_prayers():
         fourty_five_minutes_after_prayer = calc_time(
             prayers[i]["time"], prayers[i]["duration"], "+"
         )
-        dpg.add_text(
-            label=f"{i}",
-            tag=i,
-            parent="prayer_times",
-            default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')} - {prayers[i]['duration']}m",
-        )
+        if i == "Friday":
+            dpg.add_text(
+                label=f"{i}",
+                tag=i,
+                parent="prayer_times",
+                default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')} - d{prayers[i]['duration']}m - bef{config['friday']['before']}m",
+            )
+        else:
+            dpg.add_text(
+                label=f"{i}",
+                tag=i,
+                parent="prayer_times",
+                default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')} - {prayers[i]['duration']}m",
+            )
         if clock >= fourty_five_minutes_after_prayer:
             dpg.configure_item(i, color=(137, 135, 122, 255))
 
@@ -294,9 +302,19 @@ def prayer_callback():
         and not paused_for_additonal_time
     ):
         for prayer in prayers:
-            pause_begin = calc_time(
-                prayers[prayer]["time"], config["config"]["tbp"], "-"
-            )
+            pause_begin = 0
+            if prayer == "Friday":
+                pause_begin = calc_time(
+                    prayers[prayer]["time"],
+                    config["friday"]["before"],
+                    "-",
+                )
+            else:
+                pause_begin = calc_time(
+                    prayers[prayer]["time"],
+                    config["config"]["tbp"],
+                    "-",
+                )
             pause_duration = calc_time(
                 prayers[prayer]["time"], prayers[prayer]["duration"], "+"
             )
@@ -339,10 +357,7 @@ def prayer_callback():
             ]:
                 pause_begin = calc_time(
                     datetime.strptime(prayer["time"], "%H:%M").time(),
-                    config["config"]["tbp"]
-                    if WEEKDAYS[date.weekday()] != "Friday"
-                    and prayer["name"] != "Friday"
-                    else config["friday"]["before"],
+                    config["config"]["tbp"],
                     "-",
                 )
                 pause_duration = calc_time(
@@ -363,14 +378,19 @@ def prayer_callback():
                     )
 
             for prayer in prayers:
-                pause_begin = calc_time(
-                    prayers[prayer]["time"],
-                    config["config"]["tbp"]
-                    if WEEKDAYS[date.weekday()] != "Friday"
-                    and prayer["name"] != "Friday"
-                    else config["friday"]["before"],
-                    "-",
-                )
+                pause_begin = 0
+                if prayer == "Friday":
+                    pause_begin = calc_time(
+                        prayers[prayer]["time"],
+                        config["friday"]["before"],
+                        "-",
+                    )
+                else:
+                    pause_begin = calc_time(
+                        prayers[prayer]["time"],
+                        config["config"]["tbp"],
+                        "-",
+                    )
                 pause_duration = calc_time(
                     prayers[prayer]["time"], prayers[prayer]["duration"], "+"
                 )
@@ -408,9 +428,7 @@ def additonal_times_callback():
         ]:
             pause_begin = calc_time(
                 datetime.strptime(prayer["time"], "%H:%M").time(),
-                config["config"]["tbp"]
-                if WEEKDAYS[date.weekday()] != "Friday" and prayer["name"] != "Friday"
-                else config["friday"]["before"],
+                config["config"]["tbp"],
                 "-",
             )
             pause_duration = calc_time(
@@ -457,14 +475,20 @@ def additonal_times_callback():
             )
 
             for prayer in prayers:
-                pause_begin = calc_time(
-                    prayers[prayer]["time"],
-                    config["config"]["tbp"]
-                    if WEEKDAYS[date.weekday()] != "Friday"
-                    and prayer["name"] != "Friday"
-                    else config["friday"]["before"],
-                    "-",
-                )
+                pause_begin = 0
+                if prayer == "Friday":
+                    pause_begin = calc_time(
+                        prayers[prayer]["time"],
+                        config["friday"]["before"],
+                        "-",
+                    )
+                else:
+                    pause_begin = calc_time(
+                        prayers[prayer]["time"],
+                        config["config"]["tbp"],
+                        "-",
+                    )
+
                 pause_duration = calc_time(
                     prayers[prayer]["time"], prayers[prayer]["duration"], "+"
                 )
@@ -486,10 +510,7 @@ def additonal_times_callback():
             ]:
                 pause_begin = calc_time(
                     datetime.strptime(prayer["time"], "%H:%M").time(),
-                    config["config"]["tbp"]
-                    if WEEKDAYS[date.weekday()] != "Friday"
-                    and prayer["name"] != "Friday"
-                    else config["friday"]["before"],
+                    config["config"]["tbp"],
                     "-",
                 )
                 pause_duration = calc_time(
@@ -533,6 +554,7 @@ def date_callback():
         prayers = get_prayer_times(WEEKDAYS[date.weekday()])
 
         dpg.configure_item("date", default_value=f"Date: {date.strftime('%d/%m/%Y')}")
+        dpg.configure_item("day", default_value=f"Day: {WEEKDAYS[date.weekday()]}")
         config_prayers()
 
 
@@ -1049,6 +1071,7 @@ with dpg.window(tag="main", label="window title"):
         with dpg.child_window(width=300, tag="sidebar"):
             dpg.add_text(f"Date: {datetime.now().strftime('%d/%m/%Y')}", tag="date")
             dpg.add_text(f"Clock: {clock.strftime('%I:%M:%S %p')}", tag="clock")
+            dpg.add_text(f"Day: {WEEKDAYS[date.weekday()]}", tag="day")
             dpg.add_spacer(height=7)
             dpg.add_separator()
             dpg.add_spacer(height=5)
