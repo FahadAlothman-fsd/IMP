@@ -239,24 +239,10 @@ def render_additional_times_inputs():
 
 
 def config_prayers():
-    global prayers
-    for i in prayers:
-        dpg.configure_item(
-            i,
-            default_value=f"{i}: {prayers[i]['time'].strftime('%I:%M %p')} - {prayers[i]['duration']}m",
-            color=(255, 255, 255, 255),
-        )
-
-    for prayer in [
-        i
-        for i in config["additional_times"]
-        if i["name"] != "" and i["time"] != "" and i["duration"] != 0
-    ]:
-        dpg.configure_item(
-            prayer["name"],
-            default_value=f"{prayer['name']}: {datetime.strptime(prayer['time'], '%H:%M').time().strftime('%I:%M %p')} - {prayer['duration']}m",
-            color=(255, 255, 255, 255),
-        )
+    dpg.delete_item("prayer_times", children_only=True)
+    render_prayers()
+    dpg.delete_item("additional_times_text", children_only=True)
+    render_additional_times()
 
 
 def loop_callback(sender, app_data):
