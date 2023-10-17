@@ -8,7 +8,7 @@ import pygame
 import time
 import os
 import random
-from datetime import datetime, date as dt, timedelta, time
+from datetime import datetime, date as dt, timedelta, time as t
 import atexit
 from prayertimes import PrayTimes
 from threading import Thread
@@ -33,8 +33,8 @@ WEEKDAYS = {
     6: "Sunday",
 }
 
-START_TIME = time(9, 0)
-PAUSE_TIME = time(11, 0)
+START_TIME = t(9, 0)
+PAUSE_TIME = t(23, 0)
 
 
 dpg.create_context()
@@ -139,7 +139,7 @@ def get_prayer_times(day):
         else:
             prayer_times[i] = {"time": datetime.strptime(times[i.lower()], "%H:%M").time(), "duration": config["duration"][i]}  # type: ignore
     # prayer_times["test_prayer1"] = {
-    #     "time": datetime.strptime("15:22", "%H:%M").time(),
+    #     "time": datetime.strptime("01:03", "%H:%M").time(),
     #     "duration": 2,
     # }
     # prayer_times["test_prayer2"] = {
