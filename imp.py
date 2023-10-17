@@ -8,7 +8,7 @@ import pygame
 import time
 import os
 import random
-from datetime import datetime, date as dt, timedelta
+from datetime import datetime, date as dt, timedelta, time
 import atexit
 from prayertimes import PrayTimes
 from threading import Thread
@@ -20,7 +20,9 @@ BACKGROUND_COLOR = (17, 17, 34, 255)
 SECTION_BG_COLOR = (89, 27, 79, 255)
 BUTTON_COLOR = (111, 34, 101)
 TEXT_COLOR = (225, 204, 153, 255)
+
 _DEFAULT_MUSIC_VOLUME = 1.0
+
 WEEKDAYS = {
     0: "Monday",
     1: "Tuesday",
@@ -31,11 +33,15 @@ WEEKDAYS = {
     6: "Sunday",
 }
 
+START_TIME = time(9, 0)
+PAUSE_TIME = time(11, 0)
+
+
 dpg.create_context()
 prayTimes = PrayTimes()
 prayTimes.setMethod("Makkah")
 global state, paused_for_prayer, loop, date, clock, prayers, timezone, current_prayer, song_length, volume, config, songs, paused_for_additonal_time
-dpg.create_viewport(title="IMP", large_icon="imp.ico", small_icon="imp.ico")
+dpg.create_viewport(title="IMP 2.0", large_icon="imp.ico", small_icon="imp.ico")
 pygame.mixer.init()
 
 
@@ -44,6 +50,7 @@ timezone = 3
 state = None
 paused_for_prayer = False
 paused_for_additonal_time = False
+is_in_allowed_time = True
 loop = -1
 date = dt.today()
 clock = datetime.now().time()
@@ -87,8 +94,8 @@ def load_database():
                             "Dhuhr": 40,
                             "Asr": 40,
                             "Sunset": 25,
-                            "Maghrib": 25,
-                            "Isha": 40,
+                            "Maghrib": 40,
+                            "Isha": 50,
                         },
                         "friday": {
                             "before": 30,
@@ -256,6 +263,16 @@ def loop_callback(sender, app_data):
         dpg.configure_item("loop", default_value="Loop: On")
 
 
+def is_music_loaded():
+    try:
+        pygame.mixer.music.get_volume()  # This is just one of the methods that can be used
+        # print("music loaded")
+        return True
+    except pygame.error:
+        # print("music not loaded")
+        return False
+
+
 def fade_to_pause():
     global volume
     print("fade to pause")
@@ -314,7 +331,7 @@ def prayer_callback():
                     default_value=f"State: Paused For {prayer}",
                     color=(255, 0, 0, 255),
                 )
-                if state == "playing":
+                if state == "playing" and is_in_allowed_time:
                     Thread(target=fade_to_pause).start()
 
                 break
@@ -395,17 +412,19 @@ def prayer_callback():
                 state == "playing"
                 and not paused_for_additonal_time
                 and not paused_for_prayer
+                and is_in_allowed_time
             ):
                 print("fade to unpause", "line 339")
                 Thread(target=fade_to_unpause).start()
 
 
 def additonal_times_callback():
-    global paused_for_prayer, clock, current_prayer, state, config, paused_for_additonal_time
+    global paused_for_prayer, clock, current_prayer, state, config, paused_for_additonal_time, is_in_allowed_time
     if (
         current_prayer is None
         and not paused_for_prayer
         and not paused_for_additonal_time
+        and is_in_allowed_time
     ):
         for prayer in [
             i
@@ -440,91 +459,188 @@ def additonal_times_callback():
         current_prayer is not None
         and not paused_for_prayer
         and paused_for_additonal_time
+        and is_in_allowed_time
     ):
         current_prayer = [
             i for i in config["additional_times"] if i["name"] == current_prayer
-        ][0]
+        ]
+        if len(current_prayer) > 0:
+            current_prayer = current_prayer[0]
 
-        pause_duration = calc_time(
-            datetime.strptime(current_prayer["time"], "%H:%M").time(),
-            current_prayer["duration"],
-            "+",
-        )
-        if clock >= pause_duration:
-            paused_for_additonal_time = False
-            dpg.configure_item(current_prayer["name"], color=(137, 135, 122, 255))
-            current_prayer = None
-            dpg.configure_item(
-                "cstate",
-                default_value=f"State: {state}",
-                color=(255, 255, 255, 255),
+            pause_duration = calc_time(
+                datetime.strptime(current_prayer["time"], "%H:%M").time(),
+                current_prayer["duration"],
+                "+",
             )
+            if clock >= pause_duration:
+                paused_for_additonal_time = False
+                dpg.configure_item(current_prayer["name"], color=(137, 135, 122, 255))
+                current_prayer = None
+                dpg.configure_item(
+                    "cstate",
+                    default_value=f"State: {state}",
+                    color=(255, 255, 255, 255),
+                )
 
-            for prayer in prayers:
-                pause_begin = 0
-                if prayer == "Friday":
-                    pause_begin = calc_time(
-                        prayers[prayer]["time"],
-                        config["friday"]["before"],
-                        "-",
+                for prayer in prayers:
+                    pause_begin = 0
+                    if prayer == "Friday":
+                        pause_begin = calc_time(
+                            prayers[prayer]["time"],
+                            config["friday"]["before"],
+                            "-",
+                        )
+                    else:
+                        pause_begin = calc_time(
+                            prayers[prayer]["time"],
+                            config["config"]["tbp"],
+                            "-",
+                        )
+
+                    pause_duration = calc_time(
+                        prayers[prayer]["time"], prayers[prayer]["duration"], "+"
                     )
-                else:
+                    if clock >= pause_begin and clock < pause_duration:
+                        # print(state)
+                        paused_for_prayer = True
+                        current_prayer = prayer
+                        dpg.configure_item(prayer, color=(0, 255, 0, 255))
+                        dpg.configure_item(
+                            "cstate",
+                            default_value=f"State: Paused For {prayer}",
+                            color=(255, 0, 0, 255),
+                        )
+
+                for prayer in [
+                    i
+                    for i in config["additional_times"]
+                    if i["name"] != "" and i["time"] != "" and i["duration"] != 0
+                ]:
                     pause_begin = calc_time(
-                        prayers[prayer]["time"],
+                        datetime.strptime(prayer["time"], "%H:%M").time(),
                         config["config"]["tbp"],
                         "-",
                     )
-
-                pause_duration = calc_time(
-                    prayers[prayer]["time"], prayers[prayer]["duration"], "+"
-                )
-                if clock >= pause_begin and clock < pause_duration:
-                    # print(state)
-                    paused_for_prayer = True
-                    current_prayer = prayer
-                    dpg.configure_item(prayer, color=(0, 255, 0, 255))
-                    dpg.configure_item(
-                        "cstate",
-                        default_value=f"State: Paused For {prayer}",
-                        color=(255, 0, 0, 255),
+                    pause_duration = calc_time(
+                        datetime.strptime(prayer["time"], "%H:%M").time(),
+                        prayer["duration"],
+                        "+",
                     )
+                    if clock >= pause_begin and clock < pause_duration:
+                        # print(state)
+                        paused_for_additonal_time = True
+                        current_prayer = prayer["name"]
 
-            for prayer in [
-                i
-                for i in config["additional_times"]
-                if i["name"] != "" and i["time"] != "" and i["duration"] != 0
-            ]:
-                pause_begin = calc_time(
-                    datetime.strptime(prayer["time"], "%H:%M").time(),
-                    config["config"]["tbp"],
-                    "-",
-                )
-                pause_duration = calc_time(
-                    datetime.strptime(prayer["time"], "%H:%M").time(),
-                    prayer["duration"],
-                    "+",
-                )
-                if clock >= pause_begin and clock < pause_duration:
-                    # print(state)
-                    paused_for_additonal_time = True
-                    current_prayer = prayer["name"]
+                        dpg.configure_item(prayer["name"], color=(0, 255, 0, 255))
+                        dpg.configure_item(
+                            "cstate",
+                            default_value=f"State: Paused For {current_prayer}",
+                            color=(255, 0, 0, 255),
+                        )
+                if (
+                    state == "playing"
+                    and not paused_for_prayer
+                    and not paused_for_additonal_time
+                    and is_in_allowed_time
+                ):
+                    print("fade to unpause", "line 352")
+                    Thread(target=fade_to_unpause, name="fade to unpause").start()
 
-                    dpg.configure_item(prayer["name"], color=(0, 255, 0, 255))
-                    dpg.configure_item(
-                        "cstate",
-                        default_value=f"State: Paused For {current_prayer}",
-                        color=(255, 0, 0, 255),
-                    )
-            if (
-                state == "playing"
-                and not paused_for_prayer
-                and not paused_for_additonal_time
-            ):
-                print("fade to unpause", "line 352")
-                Thread(target=fade_to_unpause, name="fade to unpause").start()
+            else:
+                current_prayer = current_prayer["name"]
 
+
+def allowed_time_callback():
+    global clock, loop, prayers, is_in_allowed_time, state, paused_for_additonal_time, paused_for_prayer
+    # print(state)
+    if WEEKDAYS[date.weekday()] != "Friday":
+        if clock < START_TIME or clock > PAUSE_TIME:
+            if pygame.mixer.music.get_busy():
+                pygame.mixer.music.stop()
+            dpg.configure_item(
+                "cstate",
+                default_value=f"State: Forciably Paused",
+                color=(255, 0, 0, 255),
+            )
+            dpg.configure_item(
+                "reason",
+                default_value=f"Reason: Not in {START_TIME} - {PAUSE_TIME}",
+            )
+            dpg.configure_item(
+                "clock",
+                default_value=f"Clock: {clock.strftime('%I:%M:%S %p')}",
+                color=(255, 0, 0, 255),
+            )
+            is_in_allowed_time = False
         else:
-            current_prayer = current_prayer["name"]
+            if (
+                is_music_loaded()
+                and state == "playing"
+                and not is_in_allowed_time
+                and not paused_for_additonal_time
+                and not paused_for_prayer
+            ):
+                try:
+                    pygame.mixer.music.play(loop)
+                    print("playing loaded song")
+                except pygame.error:
+                    print("cant play loaded song")
+            dpg.configure_item(
+                "clock",
+                default_value=f"Clock: {clock.strftime('%I:%M:%S %p')}",
+                color=(255, 255, 255, 255),
+            )
+            dpg.configure_item(
+                "reason",
+                default_value=f"",
+            )
+            dpg.configure_item("cstate", color=(255, 255, 255, 255))
+            is_in_allowed_time = True
+    else:
+        # print("friday")
+        if (
+            clock
+            < calc_time(prayers["Maghrib"]["time"], prayers["Maghrib"]["duration"], "+")
+            or clock > PAUSE_TIME
+        ):
+            # print("not allowed")
+            if pygame.mixer.music.get_busy():
+                pygame.mixer.music.stop()
+            dpg.configure_item(
+                "cstate",
+                default_value=f"State: Forciably Paused",
+                color=(255, 0, 0, 255),
+            )
+            dpg.configure_item(
+                "reason",
+                default_value=f"Reason: Not in {calc_time(prayers['Maghrib']['time'], prayers['Maghrib']['duration'], '+')} - {PAUSE_TIME}",
+            )
+            dpg.configure_item(
+                "clock",
+                default_value=f"Clock: {clock.strftime('%I:%M:%S %p')}",
+                color=(255, 0, 0, 255),
+            )
+            is_in_allowed_time = False
+        else:
+            if (
+                is_music_loaded()
+                and state == "playing"
+                and not is_in_allowed_time
+                and not paused_for_additonal_time
+                and not paused_for_prayer
+            ):
+                try:
+                    pygame.mixer.music.play(loop)
+                    print("playing loaded song")
+                except pygame.error:
+                    print("cant play loaded song")
+            dpg.configure_item(
+                "clock",
+                default_value=f"Clock: {clock.strftime('%I:%M:%S %p')}",
+                color=(255, 255, 255, 255),
+            )
+            is_in_allowed_time = True
+            dpg.configure_item("cstate", color=(255, 255, 255, 255))
 
 
 def clock_callback():
@@ -721,40 +837,44 @@ def update_track():
 
 
 def play(sender, app_data, user_data):
-    global state, loop, paused_for_prayer, song_length
-    if not paused_for_prayer or not paused_for_additonal_time:
-        if user_data:
-            pygame.mixer.music.load(user_data)
-            if user_data.endswith(".mp3"):
-                audio = MP3(user_data)
-            if user_data.endswith(".wav"):
-                audio = WAVE(user_data)
-            if user_data.endswith(".ogg"):
-                audio = OggVorbis(user_data)
+    global state, loop, paused_for_prayer, song_length, is_in_allowed_time, paused_for_additonal_time
+    if user_data:
+        pygame.mixer.music.load(user_data)
+        if user_data.endswith(".mp3"):
+            audio = MP3(user_data)
+        if user_data.endswith(".wav"):
+            audio = WAVE(user_data)
+        if user_data.endswith(".ogg"):
+            audio = OggVorbis(user_data)
 
-            song_length = audio.info.length  # type: ignore
-            dpg.configure_item(item="pos", max_value=audio.info.length)  # type: ignore
+        song_length = audio.info.length  # type: ignore
+        dpg.configure_item(item="pos", max_value=audio.info.length)  # type:
+        state = "playing"
+        if (
+            is_in_allowed_time
+            and not paused_for_prayer
+            and not paused_for_additonal_time
+        ):
             pygame.mixer.music.play(loop)
-            if pygame.mixer.music.get_busy():
-                dpg.configure_item("play", label="Pause")
-                state = "playing"
-                dpg.configure_item("cstate", default_value=f"State: Playing")
-                dpg.configure_item(
-                    "csong", default_value=f"Now Playing : {ntpath.basename(user_data)}"
-                )
+        if pygame.mixer.music.get_busy():
+            dpg.configure_item("play", label="Pause")
+            dpg.configure_item("cstate", default_value=f"State: Playing")
+            dpg.configure_item(
+                "csong", default_value=f"Now Playing : {ntpath.basename(user_data)}"
+            )
 
 
 def play_pause():
-    global state, paused_for_prayer, loop, song_length, paused_for_additonal_time
+    global state, paused_for_prayer, loop, song_length, paused_for_additonal_time, is_in_allowed_time
 
     if state == "playing" and (not paused_for_prayer):
-        if not paused_for_additonal_time:
+        if not paused_for_additonal_time and is_in_allowed_time:
             state = "paused"
             pygame.mixer.music.pause()
             dpg.configure_item("play", label="Play")
             dpg.configure_item("cstate", default_value=f"State: Paused")
-    elif state == "paused" and (not paused_for_prayer):
-        if not paused_for_additonal_time:
+    elif state == "paused" and not paused_for_prayer:
+        if not paused_for_additonal_time and is_in_allowed_time:
             state = "playing"
             pygame.mixer.music.unpause()
             dpg.configure_item("play", label="Pause")
@@ -764,8 +884,9 @@ def play_pause():
         if song:
             song = random.choice(song)
             pygame.mixer.music.load(song)
+            state = "playing"
             if not paused_for_prayer:
-                if not paused_for_additonal_time:
+                if not paused_for_additonal_time and is_in_allowed_time:
                     pygame.mixer.music.play(loop)
                     dpg.configure_item("play", label="Pause")
             if pygame.mixer.music.get_busy():
@@ -1082,6 +1203,8 @@ with dpg.window(tag="main", label="window title"):
             dpg.add_spacer(height=5)
             dpg.add_text(f"State: {state}", tag="cstate")
             dpg.add_spacer(height=5)
+            dpg.add_text(f"", tag="reason")
+            dpg.add_spacer(height=5)
             dpg.add_text(f"Loop: {'On' if loop == -1 else 'Off'}", tag="loop")
             dpg.add_spacer(height=5)
             dpg.add_separator()
@@ -1146,6 +1269,7 @@ def safe_exit():
 
 
 prayer_callback()
+allowed_time_callback()
 
 app_start = dpg.get_total_time()
 clock_start = app_start
@@ -1162,6 +1286,7 @@ while dpg.is_dearpygui_running():
         clock_callback()
         prayer_callback()
         additonal_times_callback()
+        allowed_time_callback()
 
     if tf - date_start > 5:
         date_start = tf
